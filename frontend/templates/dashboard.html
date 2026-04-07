@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ITMS — Kolkata Traffic Intelligence</title>
+
+<!-- Leaflet for map -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+
+<link rel="stylesheet" href="/static/css/dashboard.css"/>
+</head>
+<body>
+
+<!-- ── HEADER ──────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="topbar-left">
+    <div class="status-dot live" id="liveIndicator"></div>
+    <div>
+      <div class="brand">ITMS · Kolkata Traffic Intelligence</div>
+      <div class="brand-sub">Real-time detection &amp; predictive analytics — West Bengal</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="badge" id="modelBadge">⬡ MODEL LOADING</div>
+    <div class="badge badge-green" id="feedBadge">◉ LIVE FEED</div>
+    <div class="clock" id="clock"></div>
+  </div>
+</header>
+
+<!-- ── KPI ROW ──────────────────────────────────────────────── -->
+<section class="kpi-row">
+  <div class="kpi-card critical">
+    <div class="kpi-label">ACCIDENTS DETECTED</div>
+    <div class="kpi-value" id="kpiAccidents">—</div>
+    <div class="kpi-sub" id="kpiAccidentsSub">loading…</div>
+    <div class="kpi-bar"><div class="kpi-bar-fill critical-fill" style="width:30%"></div></div>
+  </div>
+  <div class="kpi-card warning">
+    <div class="kpi-label">ACTIVE VIOLATIONS</div>
+    <div class="kpi-value" id="kpiViolations">—</div>
+    <div class="kpi-sub" id="kpiViolationsSub">loading…</div>
+    <div class="kpi-bar"><div class="kpi-bar-fill warning-fill" style="width:60%"></div></div>
+  </div>
+  <div class="kpi-card info">
+    <div class="kpi-label">VEHICLES TRACKED</div>
+    <div class="kpi-value" id="kpiVehicles">—</div>
+    <div class="kpi-sub" id="kpiVehiclesSub">loading…</div>
+    <div class="kpi-bar"><div class="kpi-bar-fill info-fill" style="width:75%"></div></div>
+  </div>
+  <div class="kpi-card success">
+    <div class="kpi-label">MODEL CONFIDENCE</div>
+    <div class="kpi-value" id="kpiConfidence">—</div>
+    <div class="kpi-sub" id="kpiConfidenceSub">mAP@0.5</div>
+    <div class="kpi-bar"><div class="kpi-bar-fill success-fill" style="width:94%"></div></div>
+  </div>
+</section>
+
+<!-- ── MAIN GRID ─────────────────────────────────────────────── -->
+<div class="main-grid">
+
+  <!-- LEFT: Detection + Events -->
+  <div class="left-col">
+
+    <!-- Detection Interface -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">DETECTION INTERFACE</span>
+        <div class="tab-row">
+          <button class="tab active" onclick="switchTab('upload',this)">Upload Sample</button>
+          <button class="tab" onclick="switchTab('camera',this)">Live Camera</button>
+        </div>
+      </div>
+
+      <!-- Upload Tab -->
+      <div id="tab-upload">
+        <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+          <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.bmp,.mp4,.avi,.mov,.webp" hidden/>
+          <div class="drop-icon">⬆</div>
+          <div class="drop-text">Drag or click to upload traffic sample</div>
+          <div class="drop-sub">Supports .jpg .png .mp4 .avi · max 200 MB</div>
+        </div>
+        <div class="location-row">
+          <select id="locationSelect" class="select-input">
+            <option value="">Select Sector…</option>
+            <option value="Esplanade">Esplanade</option>
+            <option value="Park Street">Park Street</option>
+            <option value="Howrah Bridge">Howrah Bridge</option>
+            <option value="Salt Lake City Centre">Salt Lake City Centre</option>
+            <option value="EM Bypass NH-12">EM Bypass NH-12</option>
+            <option value="Ultadanga">Ultadanga</option>
+            <option value="Rashbehari Connector">Rashbehari Connector</option>
+            <option value="Dunlop Bridge">Dunlop Bridge</option>
+            <option value="Gariahat">Gariahat</option>
+            <option value="Sealdah">Sealdah</option>
+          </select>
+        </div>
+        <button class="run-btn" id="runBtn" onclick="runAnalysis()">▶ RUN ANALYSIS</button>
+        <div id="uploadResult" class="result-panel hidden"></div>
+      </div>
+
+      <!-- Camera Tab -->
+      <div id="tab-camera" class="hidden">
+        <div class="camera-container">
+          <video id="cameraFeed" autoplay playsinline muted></video>
+          <canvas id="overlayCanvas" class="overlay-canvas"></canvas>
+          <div class="camera-controls">
+            <button class="cam-btn" id="camStartBtn" onclick="startCamera()">▶ START CAMERA</button>
+            <button class="cam-btn cam-stop hidden" id="camStopBtn" onclick="stopCamera()">■ STOP</button>
+          </div>
+        </div>
+        <div id="streamStats" class="stream-stats hidden">
+          <span id="streamFPS">— fps</span>
+          <span id="streamVehicles">— vehicles</span>
+          <span id="streamCongestion">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Detections Feed -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">LIVE DETECTIONS</span>
+        <div class="badge badge-green streaming-badge" id="streamingBadge">STREAMING</div>
+      </div>
+      <div id="eventFeed" class="event-feed">
+        <div class="event-placeholder">Waiting for detections…</div>
+      </div>
+    </div>
+
+    <!-- Vehicle Breakdown Chart -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">VEHICLE TYPE BREAKDOWN</span>
+        <span class="card-badge">Today</span>
+      </div>
+      <canvas id="vehicleChart" height="160"></canvas>
+    </div>
+
+  </div><!-- /left-col -->
+
+  <!-- RIGHT: Map + Model + Route -->
+  <div class="right-col">
+
+    <!-- Live Map -->
+    <div class="card map-card">
+      <div class="card-header">
+        <span class="card-title">KOLKATA TRAFFIC MAP</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <div class="legend-dot high"></div><span class="legend-label">High</span>
+          <div class="legend-dot moderate"></div><span class="legend-label">Moderate</span>
+          <div class="legend-dot low"></div><span class="legend-label">Clear</span>
+        </div>
+      </div>
+      <div id="map"></div>
+      <div class="sector-list" id="sectorList">
+        <div class="sector-placeholder">Loading sectors…</div>
+      </div>
+    </div>
+
+    <!-- Route Prediction -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">ROUTE PREDICTION</span>
+      </div>
+      <div class="route-form">
+        <input id="routeOrigin"      class="route-input" placeholder="From: e.g. Howrah Bridge"/>
+        <input id="routeOriginLat"   class="route-input" placeholder="Origin Lat (e.g. 22.5851)"/>
+        <input id="routeOriginLon"   class="route-input" placeholder="Origin Lon (e.g. 88.3468)"/>
+        <input id="routeDest"        class="route-input" placeholder="To: e.g. Salt Lake"/>
+        <input id="routeDestLat"     class="route-input" placeholder="Dest Lat (e.g. 22.5744)"/>
+        <input id="routeDestLon"     class="route-input" placeholder="Dest Lon (e.g. 88.4346)"/>
+        <button class="run-btn" onclick="predictRoute()">⟶ PREDICT ROUTE</button>
+      </div>
+      <div id="routeResult" class="route-result hidden"></div>
+    </div>
+
+    <!-- Model Status -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">MODEL STATUS</span>
+      </div>
+      <div id="modelStatusCard" class="model-card">
+        <div class="model-name" id="modelName">Loading…</div>
+        <div class="model-meta" id="modelMeta">—</div>
+        <div class="model-grid" id="modelGrid"></div>
+        <div class="model-classes" id="modelClasses"></div>
+      </div>
+    </div>
+
+    <!-- Weather & Impact -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">WEATHER · KOLKATA</span>
+      </div>
+      <div id="weatherCard" class="weather-card">
+        <div class="weather-temp" id="weatherTemp">—</div>
+        <div class="weather-cond" id="weatherCond">Loading…</div>
+        <div class="weather-details" id="weatherDetails"></div>
+        <div class="weather-impact" id="weatherImpact"></div>
+      </div>
+    </div>
+
+  </div><!-- /right-col -->
+</div><!-- /main-grid -->
+
+<script src="/static/js/dashboard.js"></script>
+</body>
+</html>
