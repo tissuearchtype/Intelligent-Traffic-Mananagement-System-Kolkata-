@@ -73,7 +73,7 @@ http://localhost:8000
 
 ---
 
-## Your Model Details
+## Model Details
 
 | Property | Value |
 |----------|-------|
